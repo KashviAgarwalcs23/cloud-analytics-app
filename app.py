@@ -7,28 +7,59 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import os
+import ssl
+import certifi
 
 st.set_page_config(layout="wide")
 st.title("📊 Cloud Data Analytics App")
 
-# Use environment variable for MongoDB URI with fallback
-mongo_uri = os.getenv("MONGO_URI", "mongodb+srv://kashviagarwalcs23:<db_password>@cluster0.t3yni.mongodb.net/?appName=Cluster0")
-client = MongoClient(mongo_uri)
-db = client["cloudDB"]
-collection = db["dataset"]
+# Use environment variable for MongoDB URI
+mongo_uri = os.getenv("MONGO_URI")
+if not mongo_uri:
+    mongo_uri = "mongodb+srv://kashviagarwalcs23:<db_password>@cluster0.t3yni.mongodb.net/?appName=Cluster0&tlsCAFile=/etc/ssl/certs/ca-certificates.crt"
+
+# Initialize MongoDB connection with proper SSL settings
+@st.cache_resource
+def init_mongo_connection():
+    try:
+        client = MongoClient(
+            mongo_uri,
+            tlsCAFile=certifi.where(),  # Use certifi's CA bundle
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            retryWrites=False
+        )
+        # Test connection
+        client.admin.command('ping')
+        return client
+    except Exception as e:
+        st.error(f"❌ Failed to connect to MongoDB: {str(e)}")
+        return None
+
+client = init_mongo_connection()
+
+if client:
+    db = client["cloudDB"]
+    collection = db["dataset"]
+    mongo_available = True
+else:
+    mongo_available = False
 
 file = st.file_uploader("📁 Upload CSV File", type="csv")
 
 if file:
     df = pd.read_csv(file)
     
-    # Store in MongoDB
-    try:
-        data = df.to_dict("records")
-        collection.insert_many(data)
-        st.success("✅ Data Successfully Stored in MongoDB")
-    except Exception as e:
-        st.warning(f"⚠️ MongoDB connection issue: {e}")
+    # Store in MongoDB (non-blocking)
+    if mongo_available:
+        try:
+            data = df.to_dict("records")
+            collection.insert_many(data)
+            st.success("✅ Data Successfully Stored in MongoDB")
+        except Exception as e:
+            st.warning(f"⚠️ MongoDB connection issue: Data visualizations work, but MongoDB storage failed. {str(e)[:100]}")
+    else:
+        st.info("ℹ️ MongoDB not available - data will be visualized but not stored")
 
     # Display tabs for different views
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Data", "📈 Statistics", "📊 Interactive Charts", "🔥 Heatmap", "🎯 Distribution"])
