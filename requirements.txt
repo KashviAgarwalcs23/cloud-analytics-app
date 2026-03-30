@@ -2,3 +2,7 @@ streamlit
 pandas
 pymongo[srv]
 matplotlib
+certifi
+seaborn
+plotly
+numpy
